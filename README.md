@@ -10,16 +10,11 @@ Developed by **Matt Vogel**
 These tools are mainly developed in Revit 2023.
 
 ---
-#### 💠 Installation 💠 
-UNI-Tools is part of pyRevit default Extensions. 
-And it has very simple and quick installation.  
+#### 💠 Installation 💠  
 
     ▶ Install pyRevit  
     ▶ Open Extensions Menu  
-    ▶ Select EF-Tools  
-    ▶ click on Install
-
-🎬 YouTube Tutorial - https://www.youtube.com/watch?v=q0zbdyyBIo0
+    ▶ ...
 
 ---
 ### 🐛 Bugs

@@ -1,5 +1,4 @@
 layout:
-  - AutoRenumberRooms
-  - RenameRoomsWithSpline
+  - Renumber Rooms
   - AutoRenumberDoors
-  
+  - Renumber Views

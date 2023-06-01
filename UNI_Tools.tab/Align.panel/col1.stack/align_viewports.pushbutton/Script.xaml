@@ -390,7 +390,7 @@
 
             <Button
                     Grid.Column="10"
-                    Content="Align Viewports"
+                    Content="Align Viewports Across Sheets"
                     Foreground="{DynamicResource text_white}"
                     FontSize="14"
                     FontWeight="Medium"

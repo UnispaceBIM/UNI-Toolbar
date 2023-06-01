@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__   = "Align Viewports"
+__title__   = "Align Viewports Across Sheets"
 __author__  = "Erik Frits"
 __doc__ = """Version = 1.1
 Date    = 08.11.2021

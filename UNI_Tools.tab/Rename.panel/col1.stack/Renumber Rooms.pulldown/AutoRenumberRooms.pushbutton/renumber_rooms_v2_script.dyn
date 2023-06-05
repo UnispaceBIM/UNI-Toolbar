@@ -122,7 +122,7 @@
     {
       "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
       "NodeType": "PythonScriptNode",
-      "Code": "# Load the Python Standard and DesignScript Libraries\r\nimport sys\r\nimport clr\r\nclr.AddReference('ProtoGeometry')\r\nfrom Autodesk.DesignScript.Geometry import *\r\nimport math\r\nclr.AddReference('RevitAPI')\r\nimport Autodesk\r\nfrom Autodesk.Revit.DB import *\r\n\r\nclr.AddReference('RevitNodes')\r\nimport Revit\r\nclr.ImportExtensions(Revit.GeometryConversion)\r\n\r\nclr.AddReference('RevitAPIUI')\r\nfrom Autodesk.Revit.UI import *\r\nfrom Autodesk.Revit.UI.Selection import *\r\n\r\nclr.AddReference('RevitServices')\r\nimport RevitServices\r\nfrom RevitServices.Persistence import DocumentManager\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\nuidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\r\n\r\n\r\n# The inputs to this node will be stored as a list in the IN variables.\r\ndataEnteringNode = IN\r\n      \r\n# INPUTS      \r\n# these are lists of points\r\nroom_coordinates = IN[0]\r\n# these are lists of strings\r\nlevels = IN[2]\r\n\r\n#this is a manually set constant\r\ngrid_spacing = IN[1]\r\n\r\n\r\nclass Point:\r\n    '''Dummy class similar to a Revit point '''\r\n    def __init__(self, x, y):\r\n        self.X = x\r\n        self.Y = y\r\n\r\n    \r\n    def __str__(self):\r\n        return f\"({self.x}, {self.y})\"\r\n  \r\n# ask the user to select the start point for the grid and grab the XY coords of that click\r\nTaskDialog.Show(\"Info\", \"Pick Upper leftmost point of the plan. This will be the start point of the grid. No rooms should be North or West of this point. WARNING: To avoid coordination confusion this should not be done if drawings have already been issued to consultants.\")\r\npoint_top_left = uidoc.Selection.PickPoint(\"Pick Upper leftmost point of the plan. This will be the start point of the grid. No rooms should be North or West of this point.\")\r\n\r\n#calculate the origin point of the 10' grid. This is where we need to start to measure from \r\n# point_top_left = Point(bb_min_pt_coordinates.X, bb_max_pt_coordinates.Y)\r\n\r\n\r\ndef extract_floor_number(s):\r\n    '''Extract the floor number from a string like \"Level 1\" '''\r\n    # Initialize an empty string to store the digits\r\n    digits = \"\"\r\n    \r\n    # Loop through each character in the string\r\n    for char in s:\r\n        # If the character is a digit, add it to the digits string\r\n        if char.isdigit():\r\n            digits += char\r\n        # If the character is not a digit and we have already found some digits, break out of the loop\r\n        elif digits:\r\n            break\r\n    if digits and digits[0] == '0':\r\n        return digits\r\n    if digits and int(digits) < 10:\r\n        return \"0%s\" % digits\r\n    # If we found some digits, convert them to an integer and return them\r\n    if digits:\r\n        return digits\r\n    # If no digits were found, return None\r\n    else:\r\n        return None\r\n\r\ndef number_to_letter(num):\r\n    '''Given a number convert it to a letter'''\r\n    # Define the alphabet\r\n    alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'\r\n    num = math.ceil(num)\r\n    # Initialize the result string\r\n    result = ''\r\n    \r\n    # Loop until the number is zero\r\n    while num > 0:\r\n        # Subtract 1 from the number to convert to zero-indexed\r\n        num -= 1\r\n        \r\n        # Get the remainder of the number divided by 26\r\n        remainder = num % 26\r\n        \r\n        # Add the corresponding letter to the result string\r\n        result = alphabet[remainder] + result\r\n        \r\n        # Divide the number by 26 and round down to the nearest integer\r\n        num = int(num / 26)\r\n    \r\n    # Return the result string\r\n    return result\r\n\r\ndef room_x_axis_name(room_point):\r\n    # take the x coordinate of the room subtract the top left BB coordinate\r\n    # this finds the distance the room is (in the X axis) from the top left origin\r\n    # then divide by grid_spacing (typically 10ft) to find how many grid zones over the room is\r\n    # do ABS and round up because MATH \r\n    # if below 10 pad the number for readability\r\n\r\n    room_name_x = (room_point.X - point_top_left.X) / grid_spacing\r\n    room_name_x = abs(room_name_x)\r\n    room_name_x = math.ceil(room_name_x)\r\n    if room_name_x < 10:\r\n        return \"0%s\" % room_name_x\r\n\r\n    else:\r\n        return str(room_name_x)\r\n\r\ndef room_y_axis_name(room_point):\r\n    # take the x coordinate of the room subtract the top left BB coordinate\r\n    # this finds the distance the room is (in the X axis) from the top left origin\r\n    # then divide by grid_spacing (typically 10ft) to find how many grid zones over the room is\r\n    # do ABS to convert a negative to a positive because MATH \r\n    # convert to letter format (AA, F, etc)\r\n\r\n    room_name_y = (room_point.Y - point_top_left.Y) / grid_spacing\r\n    room_name_y = abs(room_name_y)\r\n    room_name_y = number_to_letter(room_name_y)\r\n    return room_name_y\r\n\r\ndef append_letter(room_numbers_list, room_number):\r\n    '''If a room number already exists add a suffix to it'''\r\n    # Check if the room number is already in the list\r\n    if room_number in room_numbers_list:\r\n        # If it is, loop through the letters A to Z and find the first one that is not already in the list\r\n        for letter in \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\":\r\n            new_room_number = room_number + letter\r\n            if new_room_number not in room_numbers_list:\r\n                return new_room_number\r\n        # If all letters have been used, return the duplicate room_number. If this happen you've got more problems than duplicate room numbers...\r\n        return room_number\r\n    else:\r\n        # If the room number is not in the list, return it as-is\r\n        return room_number\r\n        \r\n# list of new room names\r\nnew_room_names = []\r\n\r\n# loop through all rooms and calculate their name\r\nfor index, room in enumerate(room_coordinates):\r\n    level_name = extract_floor_number(levels[index])\r\n    room_name = level_name+ room_y_axis_name(room) + room_x_axis_name(room) \r\n    \r\n    # check if the room name exists and if so add a suffix\r\n    room_name = append_letter(new_room_names, room_name)\r\n    \r\n    new_room_names.append(room_name)\r\n  \r\n# Return the list of new room names\r\nOUT = new_room_names\r\n\r\n",
+      "Code": "# Load the Python Standard and DesignScript Libraries\r\nimport sys\r\nimport clr\r\nclr.AddReference('ProtoGeometry')\r\nfrom Autodesk.DesignScript.Geometry import *\r\nimport math\r\nclr.AddReference('RevitAPI')\r\nimport Autodesk\r\nfrom Autodesk.Revit.DB import *\r\n\r\nclr.AddReference('RevitNodes')\r\nimport Revit\r\nclr.ImportExtensions(Revit.GeometryConversion)\r\n\r\nclr.AddReference('RevitAPIUI')\r\nfrom Autodesk.Revit.UI import *\r\nfrom Autodesk.Revit.UI.Selection import *\r\n\r\nclr.AddReference('RevitServices')\r\nimport RevitServices\r\nfrom RevitServices.Persistence import DocumentManager\r\n\r\nclr.AddReference('System.Windows.Forms')\r\nfrom System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon, DialogResult\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\nuidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\r\n\r\n\r\n# The inputs to this node will be stored as a list in the IN variables.\r\ndataEnteringNode = IN\r\n      \r\n# INPUTS      \r\n# these are lists of points\r\nroom_coordinates = IN[0]\r\n# these are lists of strings\r\nlevels = IN[2]\r\n\r\n#this is a manually set constant\r\ngrid_spacing = IN[1]\r\n\r\noriginal_room_names = IN[3]\r\n\r\nclass Point:\r\n    '''Dummy class similar to a Revit point '''\r\n    def __init__(self, x, y):\r\n        self.X = x\r\n        self.Y = y\r\n\r\n    \r\n    def __str__(self):\r\n        return f\"({self.x}, {self.y})\"\r\n\r\n\r\n# Ask if drawings have been issued to consultants. If yes \r\nissuance_result = MessageBox.Show('Have drawings been issued to consultants yet? If yes mass room renumbering should not be done to avoid coordination confusion.', 'Confirmation', MessageBoxButtons.YesNo, MessageBoxIcon.Question)\r\n\r\nif issuance_result == DialogResult.Yes:\r\n    OUT = original_room_names\r\n    # exit(0)\r\nelse:\r\n    # ask the user to select the start point for the grid and grab the XY coords of that click\r\n    TaskDialog.Show(\"Info\", \"Pick Upper leftmost point of the plan. This will be the start point of the grid. No rooms should be North or West of this point.\")\r\n    point_top_left = uidoc.Selection.PickPoint(\"Pick Upper leftmost point of the plan. This will be the start point of the grid. No rooms should be North or West of this point.\")\r\n\r\n    #calculate the origin point of the 10' grid. This is where we need to start to measure from \r\n    # point_top_left = Point(bb_min_pt_coordinates.X, bb_max_pt_coordinates.Y)\r\n\r\n\r\n    def extract_floor_number(s):\r\n        '''Extract the floor number from a string like \"Level 1\" '''\r\n        # Initialize an empty string to store the digits\r\n        digits = \"\"\r\n        \r\n        # Loop through each character in the string\r\n        for char in s:\r\n            # If the character is a digit, add it to the digits string\r\n            if char.isdigit():\r\n                digits += char\r\n            # If the character is not a digit and we have already found some digits, break out of the loop\r\n            elif digits:\r\n                break\r\n        if digits and digits[0] == '0':\r\n            return digits\r\n        if digits and int(digits) < 10:\r\n            return \"0%s\" % digits\r\n        # If we found some digits, convert them to an integer and return them\r\n        if digits:\r\n            return digits\r\n        # If no digits were found, return None\r\n        else:\r\n            return None\r\n\r\n    def number_to_letter(num):\r\n        '''Given a number convert it to a letter'''\r\n        # Define the alphabet\r\n        alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'\r\n        num = math.ceil(num)\r\n        # Initialize the result string\r\n        result = ''\r\n        \r\n        # Loop until the number is zero\r\n        while num > 0:\r\n            # Subtract 1 from the number to convert to zero-indexed\r\n            num -= 1\r\n            \r\n            # Get the remainder of the number divided by 26\r\n            remainder = num % 26\r\n            \r\n            # Add the corresponding letter to the result string\r\n            result = alphabet[remainder] + result\r\n            \r\n            # Divide the number by 26 and round down to the nearest integer\r\n            num = int(num / 26)\r\n        \r\n        # Return the result string\r\n        return result\r\n\r\n    def room_x_axis_name(room_point):\r\n        # take the x coordinate of the room subtract the top left BB coordinate\r\n        # this finds the distance the room is (in the X axis) from the top left origin\r\n        # then divide by grid_spacing (typically 10ft) to find how many grid zones over the room is\r\n        # do ABS and round up because MATH \r\n        # if below 10 pad the number for readability\r\n\r\n        room_name_x = (room_point.X - point_top_left.X) / grid_spacing\r\n        room_name_x = abs(room_name_x)\r\n        room_name_x = math.ceil(room_name_x)\r\n        if room_name_x < 10:\r\n            return \"0%s\" % room_name_x\r\n\r\n        else:\r\n            return str(room_name_x)\r\n\r\n    def room_y_axis_name(room_point):\r\n        # take the x coordinate of the room subtract the top left BB coordinate\r\n        # this finds the distance the room is (in the X axis) from the top left origin\r\n        # then divide by grid_spacing (typically 10ft) to find how many grid zones over the room is\r\n        # do ABS to convert a negative to a positive because MATH \r\n        # convert to letter format (AA, F, etc)\r\n\r\n        room_name_y = (room_point.Y - point_top_left.Y) / grid_spacing\r\n        room_name_y = abs(room_name_y)\r\n        room_name_y = number_to_letter(room_name_y)\r\n        return room_name_y\r\n\r\n    def append_letter(room_numbers_list, room_number):\r\n        '''If a room number already exists add a suffix to it'''\r\n        # Check if the room number is already in the list\r\n        if room_number in room_numbers_list:\r\n            # If it is, loop through the letters A to Z and find the first one that is not already in the list\r\n            for letter in \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\":\r\n                new_room_number = room_number + letter\r\n                if new_room_number not in room_numbers_list:\r\n                    return new_room_number\r\n            # If all letters have been used, return the duplicate room_number. If this happen you've got more problems than duplicate room numbers...\r\n            return room_number\r\n        else:\r\n            # If the room number is not in the list, return it as-is\r\n            return room_number\r\n            \r\n    # list of new room names\r\n    new_room_names = []\r\n    # ask if the project is on multiple levels\r\n\r\n    # loop through all rooms and calculate their name\r\n    confirm_result = MessageBox.Show('Does this project have work on multiple floors? If yes the level number will be added to each room name.', 'Confirmation', MessageBoxButtons.YesNo, MessageBoxIcon.Question)\r\n\r\n    if confirm_result == DialogResult.Yes:\r\n        # Do something if Yes is clicked\r\n        output = True\r\n    else:\r\n        # Do something if No is clicked\r\n        output = False\r\n\r\n\r\n    for index, room in enumerate(room_coordinates):\r\n        if output==True:\r\n            level_name = extract_floor_number(levels[index])\r\n            room_name = level_name+ room_y_axis_name(room) + room_x_axis_name(room) \r\n        else:\r\n            room_name = room_y_axis_name(room) + room_x_axis_name(room) \r\n        # check if the room name exists and if so add a suffix\r\n        room_name = append_letter(new_room_names, room_name)\r\n        \r\n        new_room_names.append(room_name)\r\n    \r\n    # Return the list of new room names\r\n    OUT = new_room_names\r\n\r\n\r\n",
       "Engine": "CPython3",
       "VariableInputPorts": true,
       "Id": "2f4f9fc33e9b437db6868df73f7045e9",
@@ -153,6 +153,15 @@
           "Level": 2,
           "UseLevels": false,
           "KeepListStructure": false
+        },
+        {
+          "Id": "1d52bb4a2d1a468f9dac61cb7a69c874",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
         }
       ],
       "Outputs": [
@@ -172,7 +181,7 @@
     {
       "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
       "NodeType": "CodeBlockNode",
-      "Code": "// IN[0] -> Coordinates of the rooms\n// IN[1] -> Grid Spacing\n// IN[2] -> Level Name of the room;\n\n// OUT[0] -> A list of the new room numbers",
+      "Code": "// IN[0] -> Coordinates of the rooms\n// IN[1] -> Grid Spacing\n// IN[2] -> Level Name of the room;\n// IN[3] -> Orig Name of the room;\n\n// OUT[0] -> A list of the new room numbers",
       "Id": "51d583293fc14d81a05c08cf1ef43b24",
       "Inputs": [],
       "Outputs": [],
@@ -772,6 +781,65 @@
       ],
       "Replication": "Disabled",
       "Description": "Creates a number."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "ec3a62a5b25848d997e203aa348034ee",
+      "Inputs": [
+        {
+          "Id": "a83334f587e54ffeae3fbac2944bd063",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "c342e0c1f0ce45259595fa3cfdd03bbe",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the node's output"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "NodeType": "FunctionNode",
+      "FunctionSignature": "Revit.Elements.Room.Number",
+      "Id": "f16f32793e5d4279b74a4c5258ec342f",
+      "Inputs": [
+        {
+          "Id": "219727c7fce7493681d02e03617b042e",
+          "Name": "room",
+          "Description": "Revit.Elements.Room",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "66cdf7e7a1fe4d388877f9a54c583176",
+          "Name": "string",
+          "Description": "string",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Get room number\n\nRoom.Number: string"
     }
   ],
   "Connectors": [
@@ -794,6 +862,11 @@
       "Start": "3d32d6d60fd24e4e8c973892bc5b7ea8",
       "End": "296f6280b5304c8a9af3675c0794bb04",
       "Id": "9439870df22e44f7acb44f6c1b565982"
+    },
+    {
+      "Start": "3d32d6d60fd24e4e8c973892bc5b7ea8",
+      "End": "a83334f587e54ffeae3fbac2944bd063",
+      "Id": "73acf760e941478da73bdd15c2bd18d4"
     },
     {
       "Start": "ae8342ae7c804b83ae797089fa4aab4b",
@@ -844,6 +917,11 @@
       "Start": "9fb9add40b704d5692e0a8fbe3c84837",
       "End": "277e5d9c26de4da880d004aee573579d",
       "Id": "085139c0d70c49a49a15cc11d6ce30ef"
+    },
+    {
+      "Start": "9fb9add40b704d5692e0a8fbe3c84837",
+      "End": "219727c7fce7493681d02e03617b042e",
+      "Id": "1d409d1871d24f908d02f1a46876b228"
     },
     {
       "Start": "89ceb6d573b0444c830403917ee5f1c0",
@@ -899,6 +977,11 @@
       "Start": "de0dd6da9b294175b77efb1d8591b8db",
       "End": "4a7ce07569744810bfa0c89d36725c54",
       "Id": "99c5c3bbe3874e4786090fbe2482534f"
+    },
+    {
+      "Start": "66cdf7e7a1fe4d388877f9a54c583176",
+      "End": "1d52bb4a2d1a468f9dac61cb7a69c874",
+      "Id": "8c8f4588efb7478280a643239ef747c2"
     }
   ],
   "Dependencies": [
@@ -997,8 +1080,8 @@
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
         "Excluded": false,
-        "X": 841.92927799437575,
-        "Y": 844.54144537491254
+        "X": 1470.1264477603156,
+        "Y": 811.25947611578988
       },
       {
         "ShowGeometry": true,
@@ -1007,8 +1090,8 @@
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
         "Excluded": false,
-        "X": 1290.7431673297326,
-        "Y": 792.66262034723331
+        "X": 2041.9876757225936,
+        "Y": 770.370498436466
       },
       {
         "ShowGeometry": false,
@@ -1017,8 +1100,8 @@
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
         "Excluded": false,
-        "X": 1147.671000690231,
-        "Y": 1059.3526299628697
+        "X": 1898.915509083092,
+        "Y": 1037.0605080521025
       },
       {
         "ShowGeometry": true,
@@ -1047,8 +1130,8 @@
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
         "Excluded": false,
-        "X": 1876.3599105493302,
-        "Y": 491.04769215094183
+        "X": 2627.6044189421909,
+        "Y": 468.75557024017456
       },
       {
         "ShowGeometry": true,
@@ -1127,8 +1210,8 @@
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
         "Excluded": false,
-        "X": 284.94079411527309,
-        "Y": 1024.4867034114204
+        "X": 322.12499047498125,
+        "Y": 904.96607225521552
       },
       {
         "ShowGeometry": true,
@@ -1137,8 +1220,8 @@
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
         "Excluded": false,
-        "X": 452.76291393849726,
-        "Y": 990.93684487502458
+        "X": 489.94711029820542,
+        "Y": 871.41621371881968
       },
       {
         "ShowGeometry": true,
@@ -1209,6 +1292,26 @@
         "Excluded": false,
         "X": -412.58414238414406,
         "Y": 199.031947005932
+      },
+      {
+        "ShowGeometry": true,
+        "Name": "Watch",
+        "Id": "ec3a62a5b25848d997e203aa348034ee",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 2580.5009606297385,
+        "Y": 1001.3308312981651
+      },
+      {
+        "ShowGeometry": true,
+        "Name": "Room.Number",
+        "Id": "f16f32793e5d4279b74a4c5258ec342f",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 345.82915825107284,
+        "Y": 1031.2361896660418
       }
     ],
     "Annotations": [
@@ -1219,14 +1322,14 @@
           "2f4f9fc33e9b437db6868df73f7045e9",
           "51d583293fc14d81a05c08cf1ef43b24"
         ],
-        "Left": 1137.671000690231,
-        "Top": 739.66262034723331,
-        "Width": 407.0,
-        "Height": 474.69000961563643,
+        "Left": 1888.915509083092,
+        "Top": 717.170498436466,
+        "Width": 407.20000000000005,
+        "Height": 492.49000961563638,
         "FontSize": 36.0,
-        "InitialTop": 792.66262034723331,
+        "InitialTop": 770.370498436466,
         "InitialHeight": 411.69000961563643,
-        "TextblockHeight": 43.0,
+        "TextblockHeight": 43.2,
         "Background": "#FFC1D676"
       },
       {
@@ -1239,13 +1342,13 @@
           "a2c7c4ee66484a45ad8e0a854e4d3df3"
         ],
         "Left": -378.7196944770842,
-        "Top": 756.359534680695,
-        "Width": 662.24499150678878,
+        "Top": 756.159534680695,
+        "Width": 662.44499150678871,
         "Height": 229.1267440651751,
         "FontSize": 36.0,
         "InitialTop": 809.359534680695,
         "InitialHeight": 253.1267440651751,
-        "TextblockHeight": 43.0,
+        "TextblockHeight": 43.2,
         "Background": "#FFC1D676"
       },
       {
@@ -1259,13 +1362,13 @@
           "6c3f91a21e0f4d73b7edd0de6df63ce6"
         ],
         "Left": -814.42067712663709,
-        "Top": 659.437789656589,
-        "Width": 1540.1835910651344,
-        "Height": 458.04891375483146,
+        "Top": 659.23778965658892,
+        "Width": 1576.7677874248425,
+        "Height": 338.32828259862663,
         "FontSize": 36.0,
         "InitialTop": 712.437789656589,
         "InitialHeight": 457.04891375483146,
-        "TextblockHeight": 43.0,
+        "TextblockHeight": 43.2,
         "Background": "#FFC1D676"
       },
       {
@@ -1278,13 +1381,13 @@
           "fc88e24c4f3c4732af80cd14dafc28b6"
         ],
         "Left": -492.58518968395003,
-        "Top": 37.905202940757022,
-        "Width": 662.244991506789,
+        "Top": 37.705202940757019,
+        "Width": 662.44499150678894,
         "Height": 229.126744065175,
         "FontSize": 36.0,
         "InitialTop": 90.905202940757022,
         "InitialHeight": 253.126744065175,
-        "TextblockHeight": 43.0,
+        "TextblockHeight": 43.2,
         "Background": "#FFC1D676"
       },
       {
@@ -1299,18 +1402,18 @@
           "486c39b2e12b49c1bf5892b95d35a0fd"
         ],
         "Left": -1005.5439108982074,
-        "Top": 1.2570503379147979,
-        "Width": 2035.5941169122339,
-        "Height": 320.11986044394195,
+        "Top": 1.0570503379147951,
+        "Width": 2035.394116912234,
+        "Height": 319.91986044394196,
         "FontSize": 36.0,
         "InitialTop": 54.2570503379148,
         "InitialHeight": 319.11986044394195,
-        "TextblockHeight": 43.0,
+        "TextblockHeight": 43.2,
         "Background": "#FFC1D676"
       }
     ],
-    "X": -672.00724950572135,
-    "Y": -351.4702654626077,
-    "Zoom": 0.92754260224307239
+    "X": -82.620196001435659,
+    "Y": -341.54685234954593,
+    "Zoom": 0.60240645739145415
   }
 }

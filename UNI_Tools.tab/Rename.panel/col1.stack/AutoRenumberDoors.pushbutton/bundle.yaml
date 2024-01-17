@@ -1,3 +1,4 @@
 title: Renumber Doors by Room
 tooltip: Automatically renumbers doors based on the room they open into
 author: Matt Vogel
+highlight: new

@@ -1,0 +1,4 @@
+highlight: new
+Layout:
+- RenameRoomsWithSpline.pushbutton
+- AutoRenumberRooms.pushbutton

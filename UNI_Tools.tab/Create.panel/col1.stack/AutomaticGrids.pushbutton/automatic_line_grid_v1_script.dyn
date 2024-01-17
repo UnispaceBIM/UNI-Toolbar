@@ -1,0 +1,211 @@
+{
+  "Uuid": "164e64fc-37b1-447d-8d4d-0f0bab3a3a30",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "automatic_line_grid_v1_script",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "NodeType": "PythonScriptNode",
+      "Code": "import clr\r\n\r\n# Import RevitAPI\r\nclr.AddReference('RevitAPI')\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Import DocumentManager and TransactionManager\r\nclr.AddReference('RevitServices')\r\nimport RevitServices\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\nimport Autodesk\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Import ProtoGeometry for Dynamo interoperability\r\nclr.AddReference('ProtoGeometry')\r\nfrom Autodesk.DesignScript.Geometry import Point\r\n\r\n# Import ToRevitType for geometry conversion\r\nclr.AddReference('RevitNodes')\r\nimport Revit\r\nclr.ImportExtensions(Revit.GeometryConversion)\r\n\r\nclr.AddReference('RevitAPIUI')\r\nfrom Autodesk.Revit.UI import *\r\nfrom Autodesk.Revit.UI.Selection import *\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\nuidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\r\n\r\n# Import the .NET List\r\nclr.AddReference('System')\r\nfrom System.Collections.Generic import List\r\n\r\n# Function to generate letter labels (A, B, ..., Z, AA, AB, ...)\r\ndef generate_letter_labels(num):\r\n    labels = []\r\n    for i in range(num):\r\n        quotient, remainder = divmod(i, 26)\r\n        if quotient > 0:\r\n            labels.append(chr(64 + quotient) + chr(65 + remainder))\r\n        else:\r\n            labels.append(chr(65 + remainder))\r\n    return labels\r\n\r\n# Define the top left and bottom right points to test\r\n# topLeft = Point.ByCoordinates(-12.591071277, 129.487292193, 0.000000000)\r\n# bottomRight = Point.ByCoordinates(50.648512056, 88.565417193, 0.000000000)\r\n\r\n# Convert points from Dynamo to Revit types\r\n# topLeft = topLeft.ToXyz()\r\n# bottomRight = bottomRight.ToXyz()\r\n\r\n# TaskDialog.Show(\"Info\", \"Pick the top left corner of where the grid should start.\")\r\n# topLeft = uidoc.Selection.PickPoint(\"Pick the top left corner of where the grid should start.\")\r\n\r\n# TaskDialog.Show(\"Info\", \"Pick the bottom right corner of where the grid should end.\")\r\n# bottomRight = uidoc.Selection.PickPoint(\"Pick the bottom right corner of where the grid should end.\")\r\npts = IN[0]\r\ntopLeft = pts[0]\r\nbottomRight = pts[1]\r\n\r\n# Define the grid size in feet (10 feet)\r\ngridSize = 10.0\r\n\r\n# Calculate the number of cells in the X and Y directions\r\nnumX = int((bottomRight.X - topLeft.X) / gridSize)\r\nnumY = int((topLeft.Y - bottomRight.Y) / gridSize)\r\n\r\n# Get the current document\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\n\r\n# Get the red line style\r\nline_style = FilteredElementCollector(doc).OfClass(GraphicsStyle).ToElements()\r\nred_line_style = [style for style in line_style if style.Name == '01 - Ultra Light Red'][0]\r\n\r\n# Get the default text note type (you may need to adjust this to match your document's text types)\r\ntext_note_type_id = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType)\r\n\r\n# Start a transaction\r\nTransactionManager.Instance.EnsureInTransaction(doc)\r\n\r\n# Lists to keep track of created elements' IDs\r\ndetail_lines_ids = []\r\ntext_notes_ids = []\r\n\r\n# Generate letter labels for the horizontal lines\r\nletter_labels = generate_letter_labels(numY + 1)\r\n\r\n# Create the horizontal grid lines and add text notes\r\nfor i, label in enumerate(letter_labels):\r\n    startH = XYZ(topLeft.X, topLeft.Y - i * gridSize, 0)\r\n    endH = XYZ(bottomRight.X, topLeft.Y - i * gridSize, 0)\r\n    lineH = Line.CreateBound(startH, endH)\r\n    detail_lineH = doc.Create.NewDetailCurve(doc.ActiveView, lineH)\r\n    detail_lineH.LineStyle = red_line_style\r\n    \r\n    # Create text note at the start of each horizontal line\r\n    text_position = XYZ(startH.X - gridSize * 0.5, startH.Y, 0)  # Adjust X position slightly to the left of the line\r\n    text_note = TextNote.Create(doc, doc.ActiveView.Id, text_position, label, text_note_type_id)\r\n    \r\n    # After creating each detail line and text note, store their IDs\r\n    detail_lines_ids.append(detail_lineH.Id)\r\n    text_notes_ids.append(text_note.Id)\r\n\r\n# Create the vertical grid lines and add text notes\r\nfor j in range(numX + 1):\r\n    startV = XYZ(topLeft.X + j * gridSize, topLeft.Y, 0)\r\n    endV = XYZ(topLeft.X + j * gridSize, bottomRight.Y, 0)\r\n    lineV = Line.CreateBound(startV, endV)\r\n    detail_lineV = doc.Create.NewDetailCurve(doc.ActiveView, lineV)\r\n    detail_lineV.LineStyle = red_line_style\r\n    \r\n    # Create text note at the top of each vertical line\r\n    text_position = XYZ(startV.X, startV.Y + gridSize * 0.6, 0)  # Adjust Y position slightly above the line\r\n    text_note = TextNote.Create(doc, doc.ActiveView.Id, text_position, str(j + 1), text_note_type_id)\r\n    \r\n    # After creating each detail line and text note, store their IDs\r\n    detail_lines_ids.append(detail_lineV.Id)\r\n    text_notes_ids.append(text_note.Id)\r\n\r\n# Combine the lists of ElementIds\r\nelement_ids = detail_lines_ids + text_notes_ids\r\n\r\n# Ensure input is a list\r\nif not isinstance(element_ids, list):\r\n    element_ids = [element_ids]\r\n\r\n# Convert input IDs to ElementId objects if they are not already\r\nelement_ids = [ElementId(id.IntegerValue) if isinstance(id, ElementId) else ElementId(id) for id in element_ids]\r\n\r\n# Convert Python list to .NET List[ElementId]\r\nelement_id_list = List[ElementId](element_ids)\r\n\r\n# # Start a transaction to modify the document\r\n# TransactionManager.Instance.EnsureInTransaction(doc)\r\n\r\n# Create a new group with the elements\r\ntry:\r\n    new_group = doc.Create.NewGroup(element_id_list)\r\n    message = \"Group created with {} elements.\".format(len(element_id_list))\r\nexcept Exception as e:\r\n    new_group = []\r\n    message = \"Failed to create group: \" + str(e)\r\n\r\n\r\n# End the transaction\r\nTransactionManager.Instance.TransactionTaskDone()\r\n\r\n# Output the lists of element IDs (if needed for further processing)\r\nOUT = detail_lines_ids, element_id_list",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "c2feffe297764e25869df0bdb9c0da14",
+      "Inputs": [
+        {
+          "Id": "ceb2f50ec9d94481b087f1c5be0c4598",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "f9f0059615a34dc48255635965fdf581",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "9de6bff2b623438e9f294bbeb74e7a0c",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "431147bf7eb44022a117097a22f945f6",
+      "Inputs": [
+        {
+          "Id": "af12d9769901498c98025635422e5f88",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "692c0147e92d43628eb221e822e46f11",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the node's output"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "NodeType": "PythonScriptNode",
+      "Code": "import clr\r\nclr.AddReference('ProtoGeometry')\r\nfrom Autodesk.DesignScript.Geometry import *\r\n\r\nclr.AddReference('RevitAPI')\r\nimport Autodesk\r\nfrom Autodesk.Revit.DB import *\r\n\r\nclr.AddReference('RevitNodes')\r\nimport Revit\r\nclr.ImportExtensions(Revit.GeometryConversion)\r\n\r\nclr.AddReference('RevitAPIUI')\r\nfrom Autodesk.Revit.UI import *\r\nfrom Autodesk.Revit.UI.Selection import *\r\n# Import RevitAPI and RevitAPIUI\r\nclr.AddReference(\"RevitAPI\")\r\nclr.AddReference(\"RevitAPIUI\")\r\nfrom Autodesk.Revit.DB import *\r\n\r\n# Get the active document\r\nfrom RevitServices.Persistence import DocumentManager\r\nclr.AddReference('RevitServices')\r\nimport RevitServices\r\nfrom RevitServices.Persistence import DocumentManager\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\nuidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\r\n\r\nTaskDialog.Show(\"Info\", \"Pick Upper leftmost point of the plan. This will be the start point of the grid. \")\r\nupper_left_pt = uidoc.Selection.PickPoint(\"Pick Upper leftmost point of the plan. This will be the start point of the grid.\")\r\n\r\nTaskDialog.Show(\"Info\", \"Pick Lower rightmost point of the plan. This will be the end point of the grid. \")\r\nlower_right_pt = uidoc.Selection.PickPoint(\"Pick Lower rightmost point of the plan. This will be the end point of the grid.\")\r\n\r\n\r\nOUT = upper_left_pt, lower_right_pt",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "4558a356b0e94575b2901ae5b48e985c",
+      "Inputs": [
+        {
+          "Id": "13fb9dbc8d7e4370b720771f11a5a2d2",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "74ae8f61f1394cd7afd83376eaa265c2",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "9de6bff2b623438e9f294bbeb74e7a0c",
+      "End": "af12d9769901498c98025635422e5f88",
+      "Id": "4c088c7c415748cb8ed10f80bc34e98a"
+    },
+    {
+      "Start": "74ae8f61f1394cd7afd83376eaa265c2",
+      "End": "ceb2f50ec9d94481b087f1c5be0c4598",
+      "Id": "d936506feac149618145779607127da4"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.12",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "1.10",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.12.1.8246",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "ShowGeometry": true,
+        "Name": "Generate Line Grid",
+        "Id": "c2feffe297764e25869df0bdb9c0da14",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 147.41543026706245,
+        "Y": 115.37388724035614
+      },
+      {
+        "ShowGeometry": true,
+        "Name": "Watch",
+        "Id": "431147bf7eb44022a117097a22f945f6",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 384.91691394658744,
+        "Y": 149.50445103857567
+      },
+      {
+        "ShowGeometry": true,
+        "Name": "Get Selected Points",
+        "Id": "4558a356b0e94575b2901ae5b48e985c",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": -118.92878338278928,
+        "Y": 210.70919881305628
+      }
+    ],
+    "Annotations": [],
+    "X": 180.005,
+    "Y": 145.41749999999996,
+    "Zoom": 0.8425
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "Uuid": "d19b27b2-f424-4cbb-be77-1fcbd1b9b7e0",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "move_room_tags_to_center_v2_script",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "NodeType": "PythonScriptNode",
+      "Code": "import clr\r\nimport System\r\n\r\nclr.AddReference('RevitAPI')\r\nclr.AddReference('RevitAPIUI')\r\nclr.AddReference('System.Windows.Forms')  # Add reference to System.Windows.Forms\r\nclr.AddReference('System.Drawing')\r\nimport Autodesk\r\nfrom Autodesk.Revit.DB import *\r\nfrom Autodesk.Revit.UI.Selection import *\r\nfrom System.Windows.Forms import MessageBox  # Import MessageBox\r\n\r\nclr.AddReference('RevitServices')\r\nimport RevitServices\r\nfrom RevitServices.Persistence import DocumentManager\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\nuidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\r\n\r\n# Function to prompt user to select tags to exclude\r\ndef pick_tags_to_exclude():\r\n    selection = uidoc.Selection\r\n    picked_ref = selection.PickObjects(ObjectType.Element, \"Select tags to exclude from moving:\")\r\n    return [doc.GetElement(ref_id) for ref_id in picked_ref]\r\n\r\n# Function to center tags in rooms\r\ndef tags_to_room_center(excluded_tags):\r\n    room_tags = FilteredElementCollector(doc, doc.ActiveView.Id).OfCategory(\r\n                BuiltInCategory.OST_RoomTags).WhereElementIsNotElementType().ToElements()\r\n\r\n    transaction = Transaction(doc, 'Move Room Tags on Room Points')\r\n    transaction.Start()\r\n    \r\n    for room_tag in room_tags:\r\n        # Skip tags that are in the excluded list\r\n        if room_tag.Id in [tag.Id for tag in excluded_tags]:\r\n            continue\r\n        \r\n        room_tag_pt = room_tag.Location.Point\r\n        room = room_tag.Room\r\n        room_pt = room.Location.Point\r\n        new_x = room_pt.X - room_tag_pt.X\r\n        new_y = room_pt.Y - room_tag_pt.Y\r\n        new_z = room_pt.Z - room_tag_pt.Z\r\n\r\n        translation = XYZ(new_x, new_y, new_z)\r\n        room_tag.Location.Move(translation)\r\n\r\n    transaction.Commit()\r\n\r\n# Main\r\ntry:\r\n    # Show a message box to the user to select tags to exclude\r\n    MessageBox.Show(\"Please select the tags you want to exclude from moving. Click Finish when done.\", \"Select Tags\")\r\n    excluded_tags = pick_tags_to_exclude()\r\n    tags_to_room_center(excluded_tags)\r\nexcept Autodesk.Revit.Exceptions.OperationCanceledException:\r\n    # Handle user canceling the selection\r\n    print(\"Selection canceled by user.\")\r\nexcept Exception as e:\r\n    # Handle other errors\r\n    print(str(e))",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "69c7655c88b449029f78e4fc010d80d2",
+      "Inputs": [
+        {
+          "Id": "ebece988f5a54b10a81f5301e8fb3a80",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "ebda01bf933d4a6b9a92b9946be09cda",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "3df545ddc1b9494cbd7a1cad461f8e9d",
+      "Inputs": [
+        {
+          "Id": "3d37682272f34fb3bdd631d3050dc7f5",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "75292eff87244b57b1b21159e5f383a3",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "ebda01bf933d4a6b9a92b9946be09cda",
+      "End": "3d37682272f34fb3bdd631d3050dc7f5",
+      "Id": "23e180bec1d74252a95cd25e0fa418d7"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.12",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "1.10",
+      "Data": {}
+    }
+  ],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.12.1.8246",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "ShowGeometry": true,
+        "Name": "Python Script",
+        "Id": "69c7655c88b449029f78e4fc010d80d2",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 230.8,
+        "Y": 284.4
+      },
+      {
+        "ShowGeometry": true,
+        "Name": "Watch",
+        "Id": "3df545ddc1b9494cbd7a1cad461f8e9d",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 475.5,
+        "Y": 304.0
+      }
+    ],
+    "Annotations": [],
+    "X": -49.0,
+    "Y": 8.0,
+    "Zoom": 1.0
+  }
+}
